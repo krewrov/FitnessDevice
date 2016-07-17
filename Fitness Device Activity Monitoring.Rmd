@@ -142,7 +142,7 @@ testPredictions <- predict(trainingModel, newdata=data_test)
 testPredictions <- as.character(testPredictions)
 
 # Display test predictions
-testPredcitions
+testPredictions
 ```
 
 
