@@ -1,0 +1,148 @@
+---
+title: "Fitness Device Activity Monitoring"
+author: "Erwin Vorwerk"
+date: "July 17th, 2016"
+output: html_document
+---
+
+# Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+# Data
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
+
+# Objective
+The goal of this project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. It is allowed to use any of the other variables to predict with. Output of the project is a report describing how I built my model, how I used cross validation, what I think the expected out of sample error is, and why I made the choices I did. I will also use your prediction model to predict 20 different test cases.
+
+# Loading data
+Remark: the test- and training data has been downloaded using the URL to the local working directory prior to executing this script - this improves the performance.
+
+```{r }
+# Load necessary libraries
+library(caret)
+```
+
+```{r }
+# Training data
+file_name_train <- "pml-training.csv"
+data_train <- read.csv(file_name_train, na.strings=c("NA",""),header=TRUE)
+# Testing data
+file_name_test <- "pml-testing.csv"
+data_test <- read.csv(file_name_test, na.strings=c("NA",""),header=TRUE)
+```
+
+# Cleanup the data
+First I remove variables with nearly zero variance, variables that almost always NA and variabibles that do not make sense for the model (like timeseries).
+
+```{r }
+# Remove variables that have nearly zero variance
+nzv <- nearZeroVar(data_train)
+data_train <- data_train[, -nzv]
+
+# Remove variables that are mostly NA
+varsmostlyNA <- sapply(data_train, function(x) mean(is.na(x))) > 0.95
+data_train <- data_train[,varsmostlyNA==F]
+
+# Remove variables that do not make sense for the model, first 5 columns contain time series variables
+data_train <- data_train[,-(1:5)]
+
+```
+
+# Bootstrap the data
+Next, I take 25% of the data from the data_train set and keep it for testing after the final model is constructed
+
+```{r }
+# Seed with date of today
+set.seed(as.numeric(as.Date("2016-07-17")))
+seed_train <- createDataPartition(y=data_train$classe, p=0.75, list=F)
+data_train_1 <- data_train[seed_train,]
+data_train_2 <- data_train[-seed_train,]
+```
+
+# Select Features
+Next, I investigate if there are features that are highly correlated using teh PCA method. I will drop these features from the model as they are difficult to interpret as final features.
+
+```{r }
+result = which(names(data_train_1) == "classe")
+highcorrelationcols = findCorrelation(abs(cor(data_train_1[,-result])),0.90)
+highcorrelationfeatures = names(data_train_1)[highcorrelationcols]
+data_train_1 = data_train_1[,-highcorrelationcols]
+result = which(names(data_train_1) == "classe")
+```
+
+# Model Building
+First step is to apply the Random Forest Model and validate whether it has acceptable performance. I used the model to fit on data_train_1 (the 75% subset of the training data) and have the train function use cross validation to select the best tuning parameters for the model. 
+
+```{r }
+library(caret)
+
+# Traing the model and optimze parameters (3)
+fitControl <- trainControl(method="cv", number=3, verboseIter=F)
+
+# Fit model on the trainign data subset
+trainingModel <- train(classe ~ .,data=data_train_1, method="rf", trControl=fitControl)
+
+# Show final model to see parameters
+trainingModel$finalModel
+
+```
+
+It seems that the RandomForest has come up with 500 trees and tried 24 variables at each split.
+
+# Model Evaluation 
+Now the fitted model will used to predict using the separated training data set. The confusion matrix will be used to compare predicted values against the actual values.
+
+```{r }
+# Use separated training data set to predict
+predictions_2 <- predict(trainingModel, newdata=data_train_2)
+
+# Now apply the confusionmatrix to get an estimate of the out-of-sample error
+confusionMatrix(data_train_2$classe, predictions_2)
+```
+
+If we look at the outcome of the confustionmatrix, we can see that the accuracry is 99%. This means that the predicted accuracy for the out-of-sample error is 0.1%, which is a very good result, so I will refrain from using trying other algorithms.
+
+Let's also have a look at the most important variables:
+
+```{r }
+varImp(trainingModel)
+```
+
+
+# Retraining the selected model
+In order to get the most accurate preductions, the model is trained again on the full training data set. 
+
+```{r }
+# Traing the model and optimze parameters (3)
+fitControl <- trainControl(method="cv", number=3, verboseIter=F)
+
+# Fit model on the training data - now the full set
+trainingModel <- train(classe ~ .,data=data_train, method="rf", trControl=fitControl)
+
+# Show final model to see parameters
+trainingModel$finalModel
+```
+
+# Establishing predictions on the test set
+Now that we have the model on the full training set, we can use it to predict the labels for the observations in the test set, and display 20 predictions
+
+```{r }
+# Execute predictions on the test set
+testPredictions <- predict(trainingModel, newdata=data_test)
+
+# Transform predictions to character vector
+testPredictions <- as.character(testPredictions)
+
+# Display test predictions
+testPredcitions
+```
+
+
